@@ -46,6 +46,7 @@ from . import inheriting
 from . import name as sn
 from . import objects as so
 from . import referencing
+from . import rewrites as s_rewrites
 from . import schema as s_schema
 from . import types as s_types
 from . import utils
@@ -411,6 +412,26 @@ def _get_target_name_in_diff(
         return not_none(target).get_name(schema)
 
 
+def _rewrite_kind_key(
+    schema: s_schema.Schema, o: so.Object
+) -> qltypes.RewriteKind:
+    name: sn.Name = o.get_name(schema)
+    return cast(qltypes.RewriteKind, name.name)
+
+
+class ObjectIndexByRewriteKind(
+    so.ObjectIndexBase[qltypes.RewriteKind, so.Object_T],
+    key=_rewrite_kind_key,
+):
+    @classmethod
+    def get_key_for_name(
+        cls,
+        schema: s_schema.Schema,
+        name: sn.Name,
+    ) -> qltypes.RewriteKind:
+        return cast(qltypes.RewriteKind, name.name)
+
+
 Pointer_T = TypeVar("Pointer_T", bound="Pointer")
 
 
@@ -532,6 +553,22 @@ class Pointer(referencing.NamedReferencedInheritingObject,
     computed_backlink = so.SchemaField(
         so.Object,
         default=None,
+    )
+
+    rewrites_refs = so.RefDict(
+        attr="rewrites",
+        requires_explicit_overloaded=True,
+        backref_attr="subject",
+        ref_cls=s_rewrites.Rewrite,
+    )
+
+    rewrites = so.SchemaField(
+        ObjectIndexByRewriteKind[s_rewrites.Rewrite],
+        inheritable=False,
+        ephemeral=True,
+        coerce=True,
+        compcoef=0.857,
+        default=so.DEFAULT_CONSTRUCTOR,
     )
 
     def is_tuple_indirection(self) -> bool:
@@ -933,6 +970,16 @@ class Pointer(referencing.NamedReferencedInheritingObject,
 
         return delta
 
+    def get_rewrite(
+        self, schema: s_schema.Schema, kind: qltypes.RewriteKind
+    ) -> Optional[s_rewrites.Rewrite]:
+        rewrites = self.get_rewrites(schema)
+        if rewrites:
+            for rewrite in rewrites.objects(schema):
+                if rewrite.get_kind(schema) == kind:
+                    return rewrite
+        return None
+
 
 class PseudoPointer(s_abc.Pointer):
     # An abstract base class for pointer-like objects, i.e.
@@ -1083,8 +1130,11 @@ class ComputableRef:
         self.specified_type = specified_type
 
 
-class PointerCommandContext(sd.ObjectCommandContext[Pointer_T],
-                            s_anno.AnnotationSubjectCommandContext):
+class PointerCommandContext(
+    sd.ObjectCommandContext[Pointer_T],
+    s_anno.AnnotationSubjectCommandContext,
+    s_rewrites.RewriteSubjectCommandContext,
+):
     pass
 
 

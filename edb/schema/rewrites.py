@@ -30,12 +30,14 @@ from . import annos as s_anno
 from . import delta as sd
 from . import expr as s_expr
 from . import name as sn
+from . import inheriting as s_inheriting
 from . import objects as so
-from . import pointers as s_pointers
 from . import referencing
 from . import schema as s_schema
-from . import sources as s_sources
 from . import types as s_types
+
+if TYPE_CHECKING:
+    from . import sources as s_sources
 
 
 class Rewrite(
@@ -54,13 +56,12 @@ class Rewrite(
 
     expr = so.SchemaField(
         s_expr.Expression,
-        default=None,
         compcoef=0.909,
         special_ddl_syntax=True,
     )
 
     subject = so.SchemaField(
-        s_pointers.Pointer, compcoef=None, inheritable=False
+        so.InheritingObject, compcoef=None, inheritable=False
     )
 
 
@@ -71,17 +72,21 @@ class RewriteCommandContext(
     pass
 
 
-class RewriteSourceCommandContext(
-    s_sources.SourceCommandContext[s_sources.Source_T]
+class RewriteSubjectCommandContext:
+    pass
+
+
+class RewriteSubjectCommand(
+    s_inheriting.InheritingObjectCommand[so.InheritingObjectT],
 ):
     pass
 
 
 class RewriteCommand(
-    referencing.NamedReferencedInheritingObjectCommand[Rewrite],
+    referencing.ReferencedInheritingObjectCommand[Rewrite],
     s_anno.AnnotationSubjectCommand[Rewrite],
     context_class=RewriteCommandContext,
-    referrer_context_class=RewriteSourceCommandContext,
+    referrer_context_class=RewriteSubjectCommandContext,
 ):
     def canonicalize_attributes(
         self,
@@ -119,9 +124,12 @@ class RewriteCommand(
     ) -> s_expr.CompiledExpression:
         if field.name == 'expr':
             from edb.ir import pathid
+            from . import pointers
 
             parent_ctx = self.get_referrer_context_or_die(context)
-            source = parent_ctx.op.get_object(schema, context)
+            pointer = parent_ctx.op.get_object(schema, context)
+            assert isinstance(pointer, pointers.Pointer)
+            source = pointer.get_source(schema)
             assert isinstance(source, s_types.Type)
             # XXX: in_ddl_context_name is disabled for now because
             # it causes the compiler to reject DML; we might actually
@@ -148,6 +156,11 @@ class RewriteCommand(
                     module='__derived__', name='__specified__'
                 ),
             )
+            anchors["__subject__"] = pathid.PathId.from_type(
+                schema,
+                source,
+                typename=sn.QualName(module="__derived__", name="__subject__"),
+            )
 
             singletons = frozenset(anchors.values())
 
@@ -159,6 +172,7 @@ class RewriteCommand(
                 options=qlcompiler.CompilerOptions(
                     modaliases=context.modaliases,
                     schema_object_context=self.get_schema_metaclass(),
+                    path_prefix_anchor="__subject__",
                     anchors=anchors,
                     singletons=singletons,
                     apply_query_rewrites=not context.stdmode,
@@ -212,6 +226,7 @@ class RewriteCommand(
         assert isinstance(astnode, qlast.RewriteCommand)
 
         for kind in astnode.kinds:
+            astnode.name = qlast.ObjectRef(name=str(kind))
             cmd = super()._cmd_tree_from_ast(schema, astnode, context)
             assert isinstance(cmd, RewriteCommand)
 
