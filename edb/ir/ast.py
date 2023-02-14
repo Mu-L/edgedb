@@ -686,6 +686,7 @@ class Statement(Command):
     dml_exprs: typing.List[qlast.Base]
     type_rewrites: typing.Dict[typing.Tuple[uuid.UUID, bool], Set]
     singletons: typing.List[PathId]
+    triggers: tuple[Trigger, ...]
 
 
 class TypeIntrospection(ImmutableExpr):
@@ -1025,7 +1026,22 @@ class GroupStmt(FilteredStmt):
     ] = ast.field(factory=dict)
 
 
-class MutatingStmt(Stmt):
+# XXX: DOC
+class MutatingLikeStmt(Expr):
+    __abstract_node__ = True
+
+
+class TriggerAnchor(MutatingLikeStmt):
+    """A placeholder to be put in trigger __old__ nodes.
+
+    The idea here is that in the backend, it will be treated as if it
+    was a MutatingStmt for the purposes of determining whether to use
+    overlays.
+    """
+    typeref: TypeRef
+
+
+class MutatingStmt(Stmt, MutatingLikeStmt):
     __abstract_node__ = True
     # Parts of the edgeql->IR compiler need to create statements and fill in
     # the subject later, but making it Optional would cause lots of errors,
@@ -1068,6 +1084,22 @@ class WritePolicy(Base):
     error_msg: typing.Optional[str]
 
     cardinality: qltypes.Cardinality = qltypes.Cardinality.UNKNOWN
+
+
+class Trigger(Base):
+    expr: Set
+    # All the relevant dml
+    affected: set[tuple[TypeRef, MutatingStmt]]
+    source_type: TypeRef
+    kinds: set[qltypes.TriggerKind]
+    scope: qltypes.TriggerScope
+
+    # N.B: Semantically and in the external language, delete triggers
+    # don't have a __new__ set, but we give it one in the
+    # implementation (identical) to the old set, to help make the
+    # implementation more uniform.
+    new_set: Set
+    old_set: typing.Optional[Set]
 
 
 class OnConflictClause(Base):

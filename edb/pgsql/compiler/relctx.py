@@ -1357,7 +1357,7 @@ def range_for_material_objtype(
     include_overlays: bool=True,
     include_descendants: bool=True,
     ignore_rewrites: bool=False,
-    dml_source: Optional[irast.MutatingStmt]=None,
+    dml_source: Optional[irast.MutatingLikeStmt]=None,
     ctx: context.CompilerContextLevel,
 ) -> pgast.PathRangeVar:
 
@@ -1377,6 +1377,12 @@ def range_for_material_objtype(
         and key not in ctx.pending_type_ctes
         and not for_mutation
     ):
+        # Don't include overlays in the normal way in trigger mode
+        # when a type cte is used, because we bake the overlays into
+        # the cte instead (and so including them normally could union
+        # back in things that we have filtered out)
+        if ctx.trigger_mode:
+            include_overlays = False
 
         type_rel: pgast.BaseRelation | pgast.CommonTableExpr
         if (type_cte := ctx.type_ctes.get(key)) is None:
@@ -1384,10 +1390,16 @@ def range_for_material_objtype(
                 sctx.pending_type_ctes.add(key)
                 sctx.pending_query = sctx.rel
                 sctx.volatility_ref = ()
-                sctx.type_rel_overlays = collections.defaultdict(
-                    lambda: collections.defaultdict(list))
-                sctx.ptr_rel_overlays = collections.defaultdict(
-                    lambda: collections.defaultdict(list))
+                # Normally we want to compile type rewrites without
+                # polluting them with any sort of overlays, but when
+                # compiling triggers, we recompile all of the type
+                # rewrites *to include* overlays, so that we can't peek
+                # at all newly created objects that we can't see
+                if not ctx.trigger_mode:
+                    sctx.type_rel_overlays = collections.defaultdict(
+                        lambda: collections.defaultdict(list))
+                    sctx.ptr_rel_overlays = collections.defaultdict(
+                        lambda: collections.defaultdict(list))
                 dispatch.visit(rewrite, ctx=sctx)
                 # If we are expanding inhviews, we also expand type
                 # rewrites, so don't populate type_ctes. The normal
@@ -1564,7 +1576,7 @@ def range_for_typeref(
     for_mutation: bool=False,
     include_descendants: bool=True,
     ignore_rewrites: bool=False,
-    dml_source: Optional[irast.MutatingStmt]=None,
+    dml_source: Optional[irast.MutatingLikeStmt]=None,
     ctx: context.CompilerContextLevel,
 ) -> pgast.PathRangeVar:
 
@@ -1790,7 +1802,7 @@ def table_from_ptrref(
 
 def range_for_ptrref(
     ptrref: irast.BasePointerRef, *,
-    dml_source: Optional[irast.MutatingStmt]=None,
+    dml_source: Optional[irast.MutatingLikeStmt]=None,
     for_mutation: bool=False,
     only_self: bool=False,
     path_id: Optional[irast.PathId]=None,
@@ -1951,7 +1963,7 @@ def range_for_ptrref(
 def range_for_pointer(
     pointer: irast.Pointer,
     *,
-    dml_source: Optional[irast.MutatingStmt] = None,
+    dml_source: Optional[irast.MutatingLikeStmt] = None,
     ctx: context.CompilerContextLevel,
 ) -> pgast.PathRangeVar:
 
@@ -2008,7 +2020,7 @@ def _add_type_rel_overlay(
         typeid: uuid.UUID,
         op: str,
         rel: Union[pgast.BaseRelation, pgast.CommonTableExpr], *,
-        dml_stmts: Iterable[irast.MutatingStmt] = (),
+        dml_stmts: Iterable[irast.MutatingLikeStmt] = (),
         path_id: irast.PathId,
         ctx: context.CompilerContextLevel) -> None:
     entry = (op, rel, path_id)
@@ -2028,7 +2040,7 @@ def add_type_rel_overlay(
         op: str,
         rel: Union[pgast.BaseRelation, pgast.CommonTableExpr], *,
         stop_ref: Optional[irast.TypeRef]=None,
-        dml_stmts: Iterable[irast.MutatingStmt] = (),
+        dml_stmts: Iterable[irast.MutatingLikeStmt] = (),
         path_id: irast.PathId,
         ctx: context.CompilerContextLevel) -> None:
     typeref = typeref.real_material_type
@@ -2050,7 +2062,7 @@ def add_type_rel_overlay(
 def get_type_rel_overlays(
     typeref: irast.TypeRef,
     *,
-    dml_source: Optional[irast.MutatingStmt]=None,
+    dml_source: Optional[irast.MutatingLikeStmt]=None,
     ctx: context.CompilerContextLevel,
 ) -> List[
     Tuple[
@@ -2067,8 +2079,8 @@ def get_type_rel_overlays(
 
 def reuse_type_rel_overlays(
     *,
-    dml_stmts: Iterable[irast.MutatingStmt] = (),
-    dml_source: irast.MutatingStmt,
+    dml_stmts: Iterable[irast.MutatingLikeStmt] = (),
+    dml_source: irast.MutatingLikeStmt,
     ctx: context.CompilerContextLevel,
 ) -> None:
     """Update type rel overlays when a DML statement is reused.
@@ -2097,7 +2109,7 @@ def _add_ptr_rel_overlay(
         ptrref_name: str,
         op: str,
         rel: Union[pgast.BaseRelation, pgast.CommonTableExpr], *,
-        dml_stmts: Iterable[irast.MutatingStmt] = (),
+        dml_stmts: Iterable[irast.MutatingLikeStmt] = (),
         path_id: irast.PathId,
         ctx: context.CompilerContextLevel) -> None:
 
@@ -2117,7 +2129,7 @@ def add_ptr_rel_overlay(
         ptrref: irast.PointerRef,
         op: str,
         rel: Union[pgast.BaseRelation, pgast.CommonTableExpr], *,
-        dml_stmts: Iterable[irast.MutatingStmt] = (),
+        dml_stmts: Iterable[irast.MutatingLikeStmt] = (),
         path_id: irast.PathId,
         ctx: context.CompilerContextLevel) -> None:
 
@@ -2135,7 +2147,7 @@ def add_ptr_rel_overlay(
 
 def get_ptr_rel_overlays(
     ptrref: irast.PointerRef, *,
-    dml_source: Optional[irast.MutatingStmt]=None,
+    dml_source: Optional[irast.MutatingLikeStmt]=None,
     ctx: context.CompilerContextLevel,
 ) -> List[
     Tuple[
@@ -2146,6 +2158,17 @@ def get_ptr_rel_overlays(
 ]:
     typeref = ptrref.out_source.real_material_type
     return ctx.ptr_rel_overlays[dml_source][typeref.id, ptrref.shortname.name]
+
+
+def clone_type_rel_overlays(
+    *,
+    ctx: context.CompilerContextLevel,
+) -> None:
+    ctx.type_rel_overlays = ctx.type_rel_overlays.copy()
+    for k, v in ctx.type_rel_overlays.items():
+        ctx.type_rel_overlays[k] = v.copy()
+        for k2, v2 in v.items():
+            v[k2] = list(v2)
 
 
 def clone_ptr_rel_overlays(
