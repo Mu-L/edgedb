@@ -216,7 +216,11 @@ class RewriteCommand(
         astnode: qlast.NamedDDL,
         context: sd.CommandContext
     ) -> sn.QualName:
-        return sn.QualName.from_string('__derived__::' + astnode.name.name)
+        assert astnode.name.module
+        return sn.QualName(
+            module='__derived__',
+            name=astnode.name.name + '@' + astnode.name.module
+        )
 
     @classmethod
     def _cmd_tree_from_ast(
@@ -234,8 +238,18 @@ class RewriteCommand(
 
         assert isinstance(astnode, qlast.RewriteCommand)
 
+        # each rewrite is appended with a unique name so that a rewrite
+        # does not clash with inherited rewrites
+        parent_ctx = cls.get_referrer_context(context)
+        assert parent_ctx
+        assert isinstance(parent_ctx.op, sd.QualifiedObjectCommand)
+        referrer_name = str(parent_ctx.op.classname)
+
         for kind in astnode.kinds:
-            astnode.name = qlast.ObjectRef(name=str(kind))
+            astnode.name = qlast.ObjectRef(
+                module=referrer_name,
+                name=str(kind)
+            )
             cmd = super()._cmd_tree_from_ast(schema, astnode, context)
             assert isinstance(cmd, RewriteCommand)
 

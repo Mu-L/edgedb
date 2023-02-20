@@ -414,13 +414,13 @@ def _get_target_name_in_diff(
 
 def _rewrite_kind_key(
     schema: s_schema.Schema, o: so.Object
-) -> qltypes.RewriteKind:
+) -> sn.Name:
     name: sn.Name = o.get_name(schema)
-    return cast(qltypes.RewriteKind, name.name)
+    return name
 
 
 class ObjectIndexByRewriteKind(
-    so.ObjectIndexBase[qltypes.RewriteKind, so.Object_T],
+    so.ObjectIndexBase[sn.Name, so.Object_T],
     key=_rewrite_kind_key,
 ):
     @classmethod
@@ -428,10 +428,8 @@ class ObjectIndexByRewriteKind(
         cls,
         schema: s_schema.Schema,
         name: sn.Name,
-    ) -> qltypes.RewriteKind:
-        original, _, _ = name.name.partition('@')
-        kind = original.removeprefix('__derived__|')
-        return cast(qltypes.RewriteKind, kind)
+    ) -> sn.Name:
+        return name
 
 
 Pointer_T = TypeVar("Pointer_T", bound="Pointer")
