@@ -429,7 +429,9 @@ class ObjectIndexByRewriteKind(
         schema: s_schema.Schema,
         name: sn.Name,
     ) -> qltypes.RewriteKind:
-        return cast(qltypes.RewriteKind, name.name)
+        original, _, _ = name.name.partition('@')
+        kind = original.removeprefix('__derived__|')
+        return cast(qltypes.RewriteKind, kind)
 
 
 Pointer_T = TypeVar("Pointer_T", bound="Pointer")

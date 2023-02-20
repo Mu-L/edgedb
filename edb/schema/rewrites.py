@@ -210,6 +210,15 @@ class RewriteCommand(
         pass
 
     @classmethod
+    def _classname_from_ast(
+        cls,
+        schema: s_schema.Schema,
+        astnode: qlast.NamedDDL,
+        context: sd.CommandContext
+    ) -> sn.QualName:
+        return sn.QualName.from_string('__derived__::' + astnode.name.name)
+
+    @classmethod
     def _cmd_tree_from_ast(
         cls,
         schema: s_schema.Schema,
