@@ -412,26 +412,6 @@ def _get_target_name_in_diff(
         return not_none(target).get_name(schema)
 
 
-def _rewrite_kind_key(
-    schema: s_schema.Schema, o: so.Object
-) -> sn.Name:
-    name: sn.Name = o.get_name(schema)
-    return name
-
-
-class ObjectIndexByRewriteKind(
-    so.ObjectIndexBase[sn.Name, so.Object_T],
-    key=_rewrite_kind_key,
-):
-    @classmethod
-    def get_key_for_name(
-        cls,
-        schema: s_schema.Schema,
-        name: sn.Name,
-    ) -> sn.Name:
-        return name
-
-
 Pointer_T = TypeVar("Pointer_T", bound="Pointer")
 
 
@@ -563,7 +543,7 @@ class Pointer(referencing.NamedReferencedInheritingObject,
     )
 
     rewrites = so.SchemaField(
-        ObjectIndexByRewriteKind[s_rewrites.Rewrite],
+        so.ObjectIndexByUnqualifiedName[s_rewrites.Rewrite],
         inheritable=False,
         ephemeral=True,
         coerce=True,
