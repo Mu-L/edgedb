@@ -35,9 +35,8 @@ from . import objects as so
 from . import referencing
 from . import schema as s_schema
 from . import types as s_types
+from . import utils
 
-if TYPE_CHECKING:
-    from . import sources as s_sources
 
 
 class Rewrite(
@@ -51,7 +50,6 @@ class Rewrite(
         qltypes.RewriteKind,
         coerce=True,
         compcoef=0.0,
-        inheritable=True,
         special_ddl_syntax=True,
     )
 
@@ -211,6 +209,18 @@ class RewriteCommand(
         pass
 
     @classmethod
+    def _classname_from_ast_and_referrer(
+        cls,
+        schema: s_schema.Schema,
+        referrer_name: sn.QualName,
+        astnode: qlast.NamedDDL,
+        context: sd.CommandContext
+    ) -> sn.QualName:
+        base_name = sn.UnqualName(name=astnode.name.name)
+        pnn = sn.get_specialized_name(base_name, str(referrer_name))
+        return sn.QualName(name=pnn, module=referrer_name.module)
+
+    @classmethod
     def _cmd_tree_from_ast(
         cls,
         schema: s_schema.Schema,
@@ -226,17 +236,14 @@ class RewriteCommand(
 
         assert isinstance(astnode, qlast.RewriteCommand)
 
-        # each rewrite is appended with a unique name so that a rewrite
-        # does not clash with inherited rewrites
-        parent_ctx = context.parent()
-        assert parent_ctx
-        assert isinstance(parent_ctx.op, sd.QualifiedObjectCommand)
-        referrer_name = str(parent_ctx.op.classname)
+        parent = context.parent()
+        assert parent
+        assert isinstance(parent.op, sd.ObjectCommand)
+        parent_name = parent.op.classname
 
         for kind in astnode.kinds:
             astnode.name = qlast.ObjectRef(
-                module=referrer_name,
-                name=str(kind)
+                name=sn.get_specialized_name(parent_name, str(kind))
             )
             cmd = super()._cmd_tree_from_ast(schema, astnode, context)
             assert isinstance(cmd, RewriteCommand)
