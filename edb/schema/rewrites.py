@@ -35,7 +35,6 @@ from . import objects as so
 from . import referencing
 from . import schema as s_schema
 from . import types as s_types
-from . import utils
 
 
 
@@ -63,6 +62,12 @@ class Rewrite(
         so.InheritingObject, compcoef=None, inheritable=False
     )
 
+    def should_propagate(self, schema: s_schema.Schema) -> bool:
+        # Rewrites should override rewrites on properties of an extended object
+        # type. But overriding *objects* would be hard, so we just disable
+        # inheritance for rewrites, and do lookups into parent object types
+        # when retrieving them.
+        return False
 
 class RewriteCommandContext(
     sd.ObjectCommandContext[Rewrite],
@@ -208,17 +213,6 @@ class RewriteCommand(
         # the *real* operations)
         pass
 
-    @classmethod
-    def _classname_from_ast_and_referrer(
-        cls,
-        schema: s_schema.Schema,
-        referrer_name: sn.QualName,
-        astnode: qlast.NamedDDL,
-        context: sd.CommandContext
-    ) -> sn.QualName:
-        base_name = sn.UnqualName(name=astnode.name.name)
-        pnn = sn.get_specialized_name(base_name, str(referrer_name))
-        return sn.QualName(name=pnn, module=referrer_name.module)
 
     @classmethod
     def _cmd_tree_from_ast(
@@ -236,15 +230,10 @@ class RewriteCommand(
 
         assert isinstance(astnode, qlast.RewriteCommand)
 
-        parent = context.parent()
-        assert parent
-        assert isinstance(parent.op, sd.ObjectCommand)
-        parent_name = parent.op.classname
-
         for kind in astnode.kinds:
-            astnode.name = qlast.ObjectRef(
-                name=sn.get_specialized_name(parent_name, str(kind))
-            )
+            # use kind for the name
+            astnode.name = qlast.ObjectRef(name=str(kind))
+
             cmd = super()._cmd_tree_from_ast(schema, astnode, context)
             assert isinstance(cmd, RewriteCommand)
 
