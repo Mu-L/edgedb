@@ -617,6 +617,8 @@ def compile_UpdateQuery(
                 exprtype=s_types.ExprType.Update,
                 ctx=bodyctx)
 
+            stmt.rewrites = ctx.env.update_rewrites.pop(stmt.subject)
+
         ctx.env.dml_stmts.add(stmt)
 
         result = setgen.class_set(

@@ -1096,6 +1096,9 @@ class InsertStmt(MutatingStmt):
         return self.subject.typeref.real_material_type
 
 
+Rewrites = typing.Dict[TypeRef, typing.Dict[sn.UnqualName, Set]]
+
+
 class UpdateStmt(MutatingStmt, FilteredStmt):
     # The pgsql DML compilation needs to be able to access __type__
     # fields on link fields for doing covariant assignment checking.
@@ -1104,6 +1107,10 @@ class UpdateStmt(MutatingStmt, FilteredStmt):
     # This is at least a bit of a hack.
     dunder_type_ptrref: BasePointerRef
     _material_type: TypeRef | None = None
+
+    # Update may be changing parent ObjectTypes to which different rewrite
+    # rules may apply.
+    rewrites: Rewrites = ast.field(factory=dict)
 
     @property
     def material_type(self) -> TypeRef:
