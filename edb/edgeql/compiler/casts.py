@@ -649,7 +649,9 @@ def _cast_json_to_tuple(
 ) -> irast.Set:
 
     with ctx.new() as subctx:
+        subctx.allow_factoring()
         pathctx.register_set_in_scope(ir_set, ctx=subctx)
+
         subctx.anchors = subctx.anchors.copy()
         source_path = subctx.create_anchor(ir_set, 'a')
 
@@ -669,15 +671,34 @@ def _cast_json_to_tuple(
                     "error_message_context": error_message_context
                 })
             ))
-        json_objects = qlast.FunctionCall(
-            func=('__std__', '__tuple_validate_json'),
-            args=json_object_args
+
+        # Don't validate NULLs. They are filtered out with the json nulls.
+        json_objects = qlast.IfElse(
+            condition=qlast.UnaryOp(
+                op='EXISTS',
+                operand=source_path,
+            ),
+            if_expr=qlast.FunctionCall(
+                func=('__std__', '__tuple_validate_json'),
+                args=json_object_args,
+            ),
+            else_expr=qlast.TypeCast(
+                expr=qlast.Set(elements=[]),
+                type=typegen.type_to_ql_typeref(orig_stype, ctx=ctx),
+            ),
         )
 
-        # Filter out json nulls.
+        json_objects_ir = dispatch.compile(json_objects, ctx=subctx)
+
+    with ctx.new() as subctx:
+        pathctx.register_set_in_scope(json_objects_ir, ctx=subctx)
+        subctx.anchors = subctx.anchors.copy()
+        source_path = subctx.create_anchor(json_objects_ir, 'a')
+
+        # Filter out json nulls and postgress NULLs.
         # Nulls at the top level cast can be ignored.
         filtered = qlast.SelectQuery(
-            result=json_objects,
+            result=source_path,
             where=qlast.BinOp(
                 left=qlast.FunctionCall(
                     func=('__std__', 'json_typeof'), args=[source_path]
@@ -868,6 +889,7 @@ def _cast_range(
             span=span)
 
     with ctx.new() as subctx:
+        subctx.allow_factoring()
         subctx.anchors = subctx.anchors.copy()
         source_path = subctx.create_anchor(ir_set, 'a')
 
@@ -948,6 +970,7 @@ def _cast_multirange(
         ctx.env.schema, [el_type])
     ql_range_type = typegen.type_to_ql_typeref(new_range_type, ctx=ctx)
     with ctx.new() as subctx:
+        subctx.allow_factoring()
         subctx.anchors = subctx.anchors.copy()
         source_path = subctx.create_anchor(ir_set, 'a')
 
@@ -1222,6 +1245,8 @@ def _cast_array(
             ir_set, el_cast, orig_stype, new_stype, ctx=ctx)
     else:
         with ctx.new() as subctx:
+            subctx.allow_factoring()
+
             subctx.anchors = subctx.anchors.copy()
             source_path = subctx.create_anchor(ir_set, 'a')
 

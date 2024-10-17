@@ -185,11 +185,32 @@ ALTER TYPE cfg::AbstractConfig {
             'Whether access policies will be applied when running queries.';
     };
 
+    CREATE PROPERTY apply_access_policies_sql -> std::bool {
+        SET default := false;
+        CREATE ANNOTATION cfg::affects_compilation := 'false';
+        CREATE ANNOTATION std::description :=
+            'Whether access policies will be applied when running queries over \
+            SQL adapter.';
+    };
+
     CREATE PROPERTY allow_user_specified_id -> std::bool {
         SET default := false;
         CREATE ANNOTATION cfg::affects_compilation := 'true';
         CREATE ANNOTATION std::description :=
             'Whether inserts are allowed to set the \'id\' property.';
+    };
+
+    CREATE PROPERTY simple_scoping -> std::bool {
+        CREATE ANNOTATION cfg::affects_compilation := 'true';
+        CREATE ANNOTATION std::description :=
+            'Whether to use the new simple scoping behavior \
+            (disable path factoring)';
+    };
+
+    CREATE PROPERTY warn_old_scoping -> std::bool {
+        CREATE ANNOTATION cfg::affects_compilation := 'true';
+        CREATE ANNOTATION std::description :=
+            'Whether to warn when depending on old scoping behavior.';
     };
 
     CREATE MULTI PROPERTY cors_allow_origins -> std::str {

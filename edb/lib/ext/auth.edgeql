@@ -369,6 +369,7 @@ CREATE EXTENSION PACKAGE auth VERSION '1.0' {
         IdentityAuthenticated,
         EmailFactorCreated,
         EmailVerified,
+        EmailVerificationRequested,
         PasswordResetRequested,
         MagicLinkRequested,
     >;
@@ -377,6 +378,8 @@ CREATE EXTENSION PACKAGE auth VERSION '1.0' {
         create required property url: std::str {
             create annotation std::description :=
                 "The url to send webhooks to.";
+
+            create constraint exclusive;
         };
 
         create required multi property events: ext::auth::WebhookEvent {
