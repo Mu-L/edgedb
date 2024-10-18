@@ -369,6 +369,7 @@ CREATE EXTENSION PACKAGE auth VERSION '1.0' {
         IdentityAuthenticated,
         EmailFactorCreated,
         EmailVerified,
+        EmailVerificationRequested,
         PasswordResetRequested,
         MagicLinkRequested,
     >;
@@ -377,6 +378,8 @@ CREATE EXTENSION PACKAGE auth VERSION '1.0' {
         create required property url: std::str {
             create annotation std::description :=
                 "The url to send webhooks to.";
+
+            create constraint exclusive;
         };
 
         create required multi property events: ext::auth::WebhookEvent {
@@ -390,6 +393,14 @@ CREATE EXTENSION PACKAGE auth VERSION '1.0' {
             create annotation std::description :=
                 "The secret key used to sign webhook requests.";
         };
+    };
+
+    create function ext::auth::webhook_signing_key_exists(
+        webhook_config: ext::auth::WebhookConfig
+    ) -> std::bool {
+        using (
+            select exists webhook_config.signing_secret_key
+        );
     };
 
     create type ext::auth::AuthConfig extending cfg::ExtensionConfig {

@@ -544,6 +544,16 @@ class Compiler:
         )
         schema = state.current_tx().get_schema(self.state.std_schema)
 
+        setting = database_config.get('allow_user_specified_id', None)
+        allow_user_specified_id = None
+        if setting and setting.value:
+            allow_user_specified_id = sql.is_setting_truthy(setting.value)
+
+        setting = database_config.get('apply_access_policies_sql', None)
+        apply_access_policies_sql = None
+        if setting and setting.value:
+            apply_access_policies_sql = sql.is_setting_truthy(setting.value)
+
         return sql.compile_sql(
             query_str,
             schema=schema,
@@ -551,6 +561,8 @@ class Compiler:
             prepared_stmt_map=prepared_stmt_map,
             current_database=current_database,
             current_user=current_user,
+            allow_user_specified_id=allow_user_specified_id,
+            apply_access_policies_sql=apply_access_policies_sql,
         )
 
     def compile_request(
@@ -1407,7 +1419,15 @@ def _get_compile_options(
         schema_reflection_mode=(
             ctx.schema_reflection_mode
             or _get_config_val(ctx, '__internal_query_reflschema')
-        )
+        ),
+        simple_scoping=(
+            _get_config_val(ctx, 'simple_scoping')
+        ),
+        warn_old_scoping=(
+            ctx.schema_reflection_mode or
+            ctx.bootstrap_mode or
+            _get_config_val(ctx, 'warn_old_scoping')
+        ),
     )
 
 

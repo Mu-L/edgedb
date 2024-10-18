@@ -949,6 +949,8 @@ class ClusterTestCase(BaseHTTPTestCase):
 class ConnectedTestCase(ClusterTestCase):
 
     BASE_TEST_CLASS = True
+    NO_FACTOR = False
+    WARN_FACTOR = False
 
     con: Any  # XXX: the real type?
 
@@ -988,6 +990,16 @@ class ConnectedTestCase(ClusterTestCase):
                     'CONFIGURE SESSION SET auto_rebuild_query_cache := false;'
                 )
             )
+
+        if self.NO_FACTOR:
+            self.loop.run_until_complete(
+                self.con.execute(
+                    'CONFIGURE SESSION SET simple_scoping := true;'))
+
+        if self.WARN_FACTOR:
+            self.loop.run_until_complete(
+                self.con.execute(
+                    'CONFIGURE SESSION SET warn_old_scoping := true;'))
 
         if self.TRANSACTION_ISOLATION:
             self.xact = self.con.transaction()
@@ -1092,9 +1104,12 @@ class ConnectedTestCase(ClusterTestCase):
         async for tx in self.con.retrying_transaction():
             yield cm(tx)
 
-    def assert_data_shape(self, data, shape, message=None):
+    def assert_data_shape(self, data, shape,
+                          message=None, rel_tol=None, abs_tol=None):
         assert_data_shape.assert_data_shape(
-            data, shape, self.fail, message=message)
+            data, shape, self.fail,
+            message=message, rel_tol=rel_tol, abs_tol=abs_tol,
+        )
 
     async def assert_query_result(self, query,
                                   exp_result_json,
@@ -1102,7 +1117,8 @@ class ConnectedTestCase(ClusterTestCase):
                                   *,
                                   always_typenames=False,
                                   msg=None, sort=None, implicit_limit=0,
-                                  variables=None, json_only=False):
+                                  variables=None, json_only=False,
+                                  rel_tol=None, abs_tol=None):
         fetch_args = variables if isinstance(variables, tuple) else ()
         fetch_kw = variables if isinstance(variables, dict) else {}
         try:
@@ -1121,7 +1137,9 @@ class ConnectedTestCase(ClusterTestCase):
             if sort is not None:
                 assert_data_shape.sort_results(res, sort)
             assert_data_shape.assert_data_shape(
-                res, exp_result_json, self.fail, message=msg)
+                res, exp_result_json, self.fail,
+                message=msg, rel_tol=rel_tol, abs_tol=abs_tol,
+            )
         except Exception:
             self.add_fail_notes(serialization='json')
             if msg:
@@ -1151,7 +1169,9 @@ class ConnectedTestCase(ClusterTestCase):
             if sort is not None:
                 assert_data_shape.sort_results(res, sort)
             assert_data_shape.assert_data_shape(
-                res, exp_result_binary, self.fail, message=msg)
+                res, exp_result_binary, self.fail,
+                message=msg, rel_tol=rel_tol, abs_tol=abs_tol,
+            )
         except Exception:
             self.add_fail_notes(
                 serialization='binary',
@@ -2829,3 +2849,26 @@ def find_available_port(max_value=None) -> int:
         raise RuntimeError("cannot find an available port")
     else:
         raise ValueError("max_value must be greater than 1024")
+
+
+def _needs_factoring(weakly):
+    def decorator(f):
+        async def g(self, *args, **kwargs):
+            if self.NO_FACTOR and not weakly:
+                with self.assertRaisesRegex(Exception, ''):
+                    await f(self, *args, **kwargs)
+            elif self.WARN_FACTOR:
+                with self.assertRaisesRegex(
+                    edgedb.InvalidReferenceError, 'attempting to factor out'
+                ):
+                    await f(self, *args, **kwargs)
+
+            else:
+                await f(self, *args, **kwargs)
+
+        return g
+    return decorator
+
+
+needs_factoring = _needs_factoring(weakly=False)
+needs_factoring_weakly = _needs_factoring(weakly=True)

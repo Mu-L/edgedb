@@ -359,6 +359,7 @@ PathElement = typing.Union[Expr, Ptr, TypeIntersection, ObjectRef, Splat]
 class Path(Expr):
     steps: typing.List[PathElement]
     partial: bool = False
+    allow_factoring: bool = False
 
 
 class TypeCast(Expr):
@@ -487,6 +488,7 @@ class ShapeElement(Expr):
 class Shape(Expr):
     expr: typing.Optional[Expr]
     elements: typing.List[ShapeElement]
+    allow_factoring: bool = False
 
 
 class Query(Expr):
@@ -579,6 +581,8 @@ class UpdateQuery(Query):
     subject: Expr
 
     where: typing.Optional[Expr] = None
+
+    sql_mode_link_only: bool = False
 
 
 class DeleteQuery(Query):
